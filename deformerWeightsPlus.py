@@ -12,11 +12,17 @@ import time
 import tempfile
 import xml.etree.ElementTree
 
-from PySide import QtGui, QtCore
+
+#from PySide import QtGui, QtCore
+#import shiboken
 
 import maya.cmds as cmds
 import maya.OpenMayaUI as mui
-import shiboken
+
+import PySide2.QtGui as QtGui
+import PySide2.QtCore as QtCore
+import PySide2.QtWidgets as QtWidgets
+import shiboken2
 
 def show():
     global deformerWeightsPlusWindow
@@ -32,7 +38,7 @@ def show():
 def getMayaWindow():
     ptr = mui.MQtUtil.mainWindow()
     if ptr is not None:
-        return shiboken.wrapInstance(long(ptr), QtGui.QWidget)
+        return shiboken2.wrapInstance(long(ptr), QtWidgets.QWidget)
 
 def isMesh(node):
     rels = cmds.listRelatives(node, children=True, s=True)
@@ -66,16 +72,16 @@ def findRelatedSkinCluster(node):
 
 
 ## USER INTERFACE
-class DeformerWeightsPlus(QtGui.QDialog):
+class DeformerWeightsPlus(QtWidgets.QDialog):
     def __init__(self, parent=getMayaWindow(), debug=0):
         
         #quick UI stuff
-        QtGui.QDialog.__init__(self, parent)
+        QtWidgets.QDialog.__init__(self, parent)
         self.resize(350, 160)
-        self.verticalLayout = QtGui.QVBoxLayout(self)
+        self.verticalLayout = QtWidgets.QVBoxLayout(self)
         self.verticalLayout.setSpacing(2)
         self.verticalLayout.setContentsMargins(3, 3, 3, 3)
-        self.exportBTN = QtGui.QPushButton(self)
+        self.exportBTN = QtWidgets.QPushButton(self)
         font = QtGui.QFont()
         font.setPointSize(11)
         font.setWeight(75)
@@ -84,24 +90,24 @@ class DeformerWeightsPlus(QtGui.QDialog):
         self.exportBTN.setObjectName("exportBTN")
         self.verticalLayout.addWidget(self.exportBTN)
         self.exportBTN.setText("EXPORT SKIN WEIGHTS")
-        self.horizontalLayout_2 = QtGui.QHBoxLayout()
-        self.useTempCHK = QtGui.QCheckBox(self)
+        self.horizontalLayout_2 = QtWidgets.QHBoxLayout()
+        self.useTempCHK = QtWidgets.QCheckBox(self)
         self.useTempCHK.setChecked(True)
         self.useTempCHK.setObjectName("useTempCHK")
         self.useTempCHK.setText('Use a tempDir')
         self.horizontalLayout_2.addWidget(self.useTempCHK)
-        self.pathLINE = QtGui.QLineEdit(self)
+        self.pathLINE = QtWidgets.QLineEdit(self)
         self.pathLINE.setEnabled(False)
         self.pathLINE.setObjectName("pathLINE")
         self.horizontalLayout_2.addWidget(self.pathLINE)
-        self.pathBTN = QtGui.QPushButton(self)
+        self.pathBTN = QtWidgets.QPushButton(self)
         self.pathBTN.setEnabled(False)
         self.pathBTN.setMaximumSize(QtCore.QSize(25, 16777215))
         self.pathBTN.setObjectName("pathBTN")
         self.pathBTN.setText('...')
         self.horizontalLayout_2.addWidget(self.pathBTN)
         self.verticalLayout.addLayout(self.horizontalLayout_2)
-        self.importSkinWeightsBTN = QtGui.QPushButton(self)
+        self.importSkinWeightsBTN = QtWidgets.QPushButton(self)
         font = QtGui.QFont()
         font.setPointSize(11)
         font.setWeight(75)
@@ -110,7 +116,7 @@ class DeformerWeightsPlus(QtGui.QDialog):
         self.importSkinWeightsBTN.setObjectName("importSkinWeightsBTN")
         self.importSkinWeightsBTN.setText("IMPORT SKIN WEIGHTS")
         self.verticalLayout.addWidget(self.importSkinWeightsBTN)
-        self.outputWin = QtGui.QTextEdit(self)
+        self.outputWin = QtWidgets.QTextEdit(self)
         self.outputWin.setObjectName("outputWin")
         self.verticalLayout.addWidget(self.outputWin)
         self.setWindowTitle("Save/Load skinWeights - (DeformerWeights+)")
