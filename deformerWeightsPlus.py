@@ -18,6 +18,7 @@ import xml.etree.ElementTree
 
 import maya.cmds as cmds
 import maya.OpenMayaUI as mui
+import maya.mel as mel
 
 import PySide2.QtGui as QtGui
 import PySide2.QtCore as QtCore
@@ -140,22 +141,23 @@ class DeformerWeightsPlus(QtWidgets.QDialog):
         meshSel = [m for m in cmds.ls(sl=1) if isMesh(m)]
         if meshSel:
             sdw = SkinDeformerWeights()
-            self.output += sdw.saveWeightInfo(fpath=self.pathLINE.text(), meshes=meshSel) + '\n'
+            self.output += sdw.saveWeightInfo(fpath=self.pathLINE.text() + ".skinWeights", meshes=meshSel) + '\n'
             self.refreshUI()
         else:
             cmds.warning('No meshes selected!')
     
     def importFn(self):
         t1 = time.time()
-        meshes = [m for m in cmds.ls(sl=1) if isMesh(m)]
+        meshes = [m for m in cmds.ls(type="transform") if isMesh(m)]
+        # test if there are meshes in the scene, and rely on name matching rather than having import iterate through a mesh list.
         if meshes:
-            for mesh in meshes:
-                fpath = self.pathLINE.text() + mesh + '.skinWeights'
-                if os.path.isfile(fpath):
-                    sdw = SkinDeformerWeights(path=fpath)
-                    sdw.applyWeightInfo()
-                else:
-                    cmds.warning('Cannot find file: ' + fpath)
+            #for mesh in meshes:
+            fpath = self.pathLINE.text() + '.skinWeights'
+            if os.path.isfile(fpath):
+                sdw = SkinDeformerWeights(path=fpath)
+                sdw.applyWeightInfo()
+            else:
+                cmds.warning('Cannot find file: ' + fpath)
         
             elapsed = time.time() - t1
             self.output += ('Loaded skinWeights for ' + str(len(meshes)) + ' meshes in ' + str(elapsed) + ' seconds.\n')
@@ -187,14 +189,16 @@ class SkinDeformerWeights(object):
             self.skin = skin
             self.verts = verts
 
-    def applyWeightInfo(self, worldSpace=False, normalize=False, debug=False):
+    def applyWeightInfo(self, worldSpace=False, normalize=False, debug=True):
         try:
+            #print self.shapes
             for shape in self.shapes:
                 #make a skincluster using the joints
                 if cmds.objExists(shape):
                     ss = self.shapes[shape]
-                    skinList = ss.joints
 
+                    # get joints from XML, confirm joints exist
+                    skinList = ss.joints
                     newSkinList = [j for j in skinList if cmds.objExists(j)]
                     for j in newSkinList:
                         if cmds.nodeType(j) != 'joint':
@@ -218,7 +222,8 @@ class SkinDeformerWeights(object):
                             cmds.lockNode(obj, lock=False)
                             lockedNodes.append(obj)
 
-                    cluster = cmds.skinCluster(name=ss.skin, tsb=1, mi=8, sm=0)[0]
+                    # generate new skin cluster
+                    cluster = cmds.skinCluster(name=ss.skin, tsb=1, mi=4, sm=0)[0]
                     print '>> skinCluster Influences:', cmds.skinCluster(cluster, inf=1, q=1)
                     fname = self.path.split('\\')[-1]
                     dir = self.path.replace(fname,'')
@@ -226,17 +231,21 @@ class SkinDeformerWeights(object):
                     meshVerts = cmds.polyEvaluate(shape, v=1)
 
                     if ss.verts != meshVerts:
-                        cmds.warning('WARNING>>> DeformerWeights>>> VertNum mismatch: file: ' + self.path + '[' + str(ss.verts) + '],  ' + shape + ' [' + str(meshVerts) + ']  (Switching to WorldSpace)')
+                        cmds.warning('WARNING>>> DeformerWeights>>> VertNum mismatch: file: ' + ss.shape + '[' + str(ss.verts) + '],  ' + shape + ' [' + str(meshVerts) + ']  (Switching to WorldSpace)')
                         worldSpace = True
 
                     if worldSpace:
                         cmds.deformerWeights(fname, path=dir, deformer=ss.skin, im=1, method='nearest', ws=1)
                         cmds.skinCluster(ss.skin, e=1, forceNormalizeWeights=1)
                     else:
+                        # having trouble loading multiple meshes/skin weights. Deformer weights seems to be trying to copy all  the influence 
+                        # regardless of what the mesh is actually skinned too. 
                         #cmds.deformerWeights(fname , path = dir, deformer=ss.skin, im=1, method='index')
-                        execMe = 'deformerWeights -import -deformer \"{0}\" -path \"{1}\" \"{2}\";'.format(ss.skin, dir.replace('\\', '\\\\'), fname)
+                        execMe = 'deformerWeights -import -method "index" -deformer \"{0}\" -path \"{1}\" \"{2}\";'.format(ss.skin, dir.replace('\\', '\\\\'), fname)
                         mel.eval(execMe)
-                        cmds.skinCluster(tsb=1, mi=8, sm=0)
+
+                        # This command errors and stops the script execution
+                        #cmds.skinCluster(tsb=1, mi=4, sm=0)
                         cmds.skinCluster(ss.skin, e=1, forceNormalizeWeights=1)
                     #drop selection
                     cmds.select(cl=1)
@@ -245,6 +254,7 @@ class SkinDeformerWeights(object):
                         cmds.skinPercent(cluster, normalize=True)
                     for obj in lockedNodes:
                         cmds.lockNode(obj, lock=True)
+                    
         except Exception as e:
             import traceback
             print(traceback.format_exc())
@@ -296,7 +306,9 @@ class SkinDeformerWeights(object):
         #set the header info
         for atype in root.findall('headerInfo'):
             self.fileName = atype.get('fileName')
-
+        
+        # weights is the information for each joint bound to each mesh
+        # as a result this is looping through multiple times per mesh. Insteaed 
         for atype in root.findall('weights'):
             jnt = atype.get('source')
             shape = atype.get('shape')
@@ -304,13 +316,17 @@ class SkinDeformerWeights(object):
             clusterName = atype.get('deformer')
 
             if shape not in self.shapes.keys():
-                self.shapes[shape] = self.skinnedShape(shape=shape, skin=clusterName, joints=[jnt])
+                # this is the initial dictionary entry creation, sets the shape, cluster and creates a list with a single joint
+                self.shapes[shape] = self.skinnedShape(shape=shape, skin=clusterName, joints=[jnt], verts=None)
             else:
+                # if the key is not unique then add the joint to the joint list
                 s = self.shapes[shape]
                 s.joints.append(jnt)
-
+        
         for atype in root.findall('shape'):
             verts = atype.get('max')
+            shape = atype.get("name")
+
             if verts:
                 self.shapes[shape].verts = int(verts)
 
